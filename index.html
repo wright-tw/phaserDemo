@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <script src="lib/phaser-arcade-physics-3.15.1.min.js"></script>
+</head>
+
+<body>
+    <script>
+    var config = {
+        type: Phaser.AUTO,
+        width: 800,
+        height: 600,
+        physics: {
+            default: 'arcade',
+            arcade: {
+                gravity: { y: 200 }
+            }
+        },
+        scene: {
+            preload: preload,
+            create: create,
+            update: update
+        }
+    };
+
+    var game = new Phaser.Game(config);
+    var score = 0;
+
+    function update() {
+
+        cursors = this.input.keyboard.createCursorKeys();
+
+        if (cursors.left.isDown) // 向左移動的偵聽
+        {
+            player.setVelocityX(-200); // 每秒 160px 向x負方向移動
+            player.anims.play('left', true); // 播放向左動畫
+        } else if (cursors.right.isDown) // 向右移動的偵聽
+        {
+            player.setVelocityX(200); // 每秒 160px 向x正方向移動
+            player.anims.play('right', true); // 播放向右動畫
+        } else // 不移動的時候轉向正面 
+        {
+            player.setVelocityX(0);
+            player.anims.play('turn', true); // 播放正面動畫
+        }
+        if (cursors.up.isDown && player.body.touching.down) // 向上跳躍的偵聽
+        {
+            player.setVelocityY(-330); // 每秒 330px 向y負方向移動
+
+        }
+
+        if (cursors.left.isDown && cursors.up.isDown && player.body.touching.down) {
+            console.log(1);
+            player.setVelocityY(-330);
+            player.setVelocityX(-200);
+            player.anims.play('left', true);
+        }
+
+        if (cursors.right.isDown && cursors.up.isDown && player.body.touching.down) {
+            console.log(2);
+            player.setVelocityY(-330);
+            player.setVelocityX(200);
+            player.anims.play('right', true);
+        }
+
+        if (stars.countActive(true) === 0) // 星星被吃完的時候
+        { // 把星星從新增加回來
+            stars.children.iterate(function(child) {
+                child.enableBody(true, child.x, 0, true, true);
+            });
+
+            // 主角在左半邊，則將石頭產生在右半邊，主角在右半邊則反之，以免造成被秒殺的情況
+            var x = (player.x < 400) ? Phaser.Math.Between(400, 800) : Phaser.Math.Between(0, 400);
+
+            // 增加石頭到場景內
+            var bomb = bombs.create(x, 16, 'bomb');
+            bomb.setBounce(1); // 設定反彈係數
+            bomb.setCollideWorldBounds(true); // 是否撞到邊界
+            bomb.setVelocity(Phaser.Math.Between(-200, 200), 20); // x速度介於 -200 ~ 200 之間，y 速度為 20
+        }
+
+
+    }
+
+    function preload() {
+
+        this.load.image('sky', 'assets/sky.png');
+        this.load.image('ground', 'assets/platform.png');
+        this.load.image('star', 'assets/star.png');
+        this.load.image('bomb', 'assets/bomb.png');
+
+        this.load.spritesheet('dude',
+            'assets/dude.png', { frameWidth: 32, frameHeight: 48 } //每張圖片的大小
+        );
+    }
+
+    function create() {
+
+        // 設定背景
+        this.add.image(0, 0, 'sky').setOrigin(0, 0);
+
+        // 設定地版跟跳台
+        platforms = this.physics.add.staticGroup();
+        platforms.create(400, 568, 'ground').setScale(2).refreshBody();
+        platforms.create(600, 400, 'ground');
+        platforms.create(50, 250, 'ground');
+        platforms.create(750, 220, 'ground');
+
+        // 玩家設定
+        player = this.physics.add.sprite(100, 450, "dude");
+        player.setBounce(0.3);
+        player.setCollideWorldBounds(true);
+        // 加上向左移動的動畫
+        this.anims.create({
+            key: 'left',
+            frames: this.anims.generateFrameNumbers('dude', { start: 0, end: 3 }), // 從第 0 個 frame 到第 3 個 frame
+            frameRate: 10, // 每秒 10 個 frame
+            repeat: -1 // 重複播放
+        });
+        // 加上轉身的動畫
+        this.anims.create({
+            key: 'turn',
+            frames: [{ key: 'dude', frame: 4 }], // 第 4 個 frame
+            frameRate: 20 // 每秒 20 個 frame
+        });
+        // 加上向右移動的動畫
+        this.anims.create({
+            key: 'right',
+            frames: this.anims.generateFrameNumbers('dude', { start: 5, end: 8 }), // 從第 5 個 frame 到第 8 個 frame
+            frameRate: 10, // 每秒 10 個 frame
+            repeat: -1 // 重複播放
+        });
+        this.physics.add.collider(player, platforms);
+
+        // 創建星星物件的 group
+        stars = this.physics.add.group({
+            key: "star",
+            repeat: 3, // 創建 group 時會先幫你新增一個物件，所以總共會有 1+11 個星星
+            setXY: { x: 200, y: 0, stepX: 100 } // 以 (12,0) 座標放置第一顆星，每 70px 增加 x 放下一顆星
+        });
+        stars.children.iterate(function(child) {
+            // 設定反彈值，給予 0.4 ~ 0.8 之間的反彈值，完全反彈的值為 1，完全不反彈的值為 01
+            child.setBounceY(Phaser.Math.FloatBetween(0.2, 0.3));
+        });
+        this.physics.add.collider(stars, platforms);
+
+        // 偵聽主角跟星星是否疊在一起了，如果疊在一起了，就執行 collectStar
+        this.physics.add.overlap(player, stars, collectStar, null, this);
+        // 在場景上增加score的文字
+        scoreText = this.add.text(16, 16, 'score: 0', { fontSize: '32px', fill: '#000' });
+
+        // 創建 bombs 物件
+        bombs = this.physics.add.group({
+            key: "bomb",
+            repeat: 3,
+            setXY: { x: 270, y: 0, stepX: 150, stepY: 120 }
+        });
+        bombs.children.iterate(function(child) {
+            // 設定反彈值，給予 0.4 ~ 0.8 之間的反彈值，完全反彈的值為 1，完全不反彈的值為 01
+            child.setBounceY(Phaser.Math.FloatBetween(0, 0));
+        });
+
+        // 加上與地形的物理碰撞
+        this.physics.add.collider(bombs, platforms);
+        // 加上與主角的物理碰撞
+        this.physics.add.collider(player, bombs, hitBomb, null, this);
+    }
+
+    function collectStar(player, star) {
+        // 讓星星消失在場景內
+        star.disableBody(true, true);
+        score += 10;
+        scoreText.setText('Score: ' + score);
+    }
+
+    function hitBomb(player, bomb) {
+        this.physics.pause(); // 停止所有的物理特性
+        player.setTint(0xff0000); // 將主角反紅
+        player.anims.play('turn'); // 並且轉向正面
+    }
+    </script>
+</body>
+
+</html>
